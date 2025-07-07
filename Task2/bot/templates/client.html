@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Client Chat</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+        }
+        #chat {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            height: 400px;
+            overflow-y: scroll;
+            padding: 15px;
+            background-color: #fff;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        #message {
+            width: 75%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            margin-right: 5px;
+        }
+        #send {
+            width: 20%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007BFF;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #send:hover {
+            background-color: #0056b3;
+        }
+        p {
+            margin: 5px 0;
+        }
+        .message {
+            padding: 8px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .client {
+            background-color: #d4edda;
+            text-align: right;
+        }
+        .bot, .admin {
+            background-color: #f8d7da;
+        }
+        .system {
+            background-color: #e2e3e5;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h2>Client Chat</h2>
+    <div id="chat"></div>
+    <input type="text" id="message" placeholder="Type your message here..." autocomplete="off">
+    <button id="send">Send</button>
+   <script>
+    const socket = io();
+    let room = getCookie("roomSession");
+
+    function setCookie(cname, cvalue, exdays) {
+        const d = new Date();
+        d.setTime(d.getTime() + (exdays * 24 * 60 * 60 * 1000));
+        let expires = "expires=" + d.toUTCString();
+        document.cookie = cname + "=" + cvalue + ";" + expires + ";path=/";
+    }
+
+    function getCookie(cname) {
+        let name = cname + "=";
+        let ca = document.cookie.split(';');
+        for (let i = 0; i < ca.length; i++) {
+            let c = ca[i];
+            while (c.charAt(0) == ' ') {
+                c = c.substring(1);
+            }
+            if (c.indexOf(name) == 0) {
+                return c.substring(name.length, c.length);
+            }
+        }
+        return "";
+    }
+
+    socket.on('connect', () => {
+        console.log('Connected to server');
+
+        if (!room) {
+            socket.emit('join_client', { room: null });
+        } else {
+            socket.emit('join_client', { room: room });
+        }
+    });
+
+    socket.on('room_assigned', (data) => {
+        if (data.room) {
+            room = data.room;
+            setCookie("roomSession", room, 365);
+            console.log('Room assigned:', room);
+        }
+
+        if (data.chathistory) {
+            for (const message of data.chathistory) {
+                const messenger = message.sender === "client" ? "You" : message.sender;
+                appendMessage(messenger, message.message, message.sender);
+            }
+        }
+    });
+
+    document.getElementById('send').onclick = sendMessage;
+    document.getElementById('message').addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            sendMessage();
+        }
+    });
+
+    function sendMessage() {
+        const msgInput = document.getElementById('message');
+        const message = msgInput.value.trim();
+
+        // Refresh room from cookie if needed
+        if (!room) {
+            room = getCookie("roomSession");
+        }
+
+        if (message && room) {
+            socket.emit('client_message', { room: room, message: message });
+            appendMessage('You', message, 'client');
+            msgInput.value = '';
+        } else {
+            console.warn('Cannot send message: Room not assigned yet.');
+        }
+    }
+
+    socket.on('bot_message', (data) => {
+        appendMessage('Bot', data.message, 'bot');
+    });
+
+    socket.on('client_message', (data) => {
+        if (data.flag) {
+            appendMessage('You', data.message, 'client');
+        }
+    });
+
+    socket.on('admin_message', (data) => {
+        appendMessage('Admin', data.message, 'admin');
+    });
+
+    socket.on('admin_joined', () => {
+        appendMessage('System', 'An admin has joined the chat. Bot is now disconnected.', 'system');
+    });
+
+    function appendMessage(sender, message, senderType) {
+        const chat = document.getElementById('chat');
+        const msg = document.createElement('p');
+        msg.className = `message ${senderType}`;
+        msg.innerHTML = `<strong>${sender}:</strong> ${message}`;
+        chat.appendChild(msg);
+        chat.scrollTop = chat.scrollHeight;
+    }
+</script>
+
+</body>
+</html>
